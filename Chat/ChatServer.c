@@ -4,9 +4,16 @@
 #include <sys/socket.h>
 #include <string.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #define MAX_LISTEN_NUMBER  5 //监听数
 #define SOCKET_CONNECT_NUMBER 256 //socket 连接数
+#define BUFFER_SIZE 256
+
+pthread_mutex_t mutex;
+int connect_count; //连接数
+
+static void *ChatRoom(void *arg);
 
 
 int main(int argc, char *argv[]) {
@@ -18,7 +25,8 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in client_addr;
     int client_address_len;
     int client_socket_array[SOCKET_CONNECT_NUMBER];
-    int connect_count; //连接数
+    pthread_t thread_id;
+    int result;
 	
     int server_socket = socket(PF_INET, SOCK_STREAM, 0);
     if (server_socket == -1) {
@@ -42,6 +50,7 @@ int main(int argc, char *argv[]) {
     }
 
     connect_count = 0;
+    pthread_mutex_init(&mutex, NULL);
     
     while(1) {
         client_address_len = sizeof(client_addr);
@@ -53,19 +62,69 @@ int main(int argc, char *argv[]) {
 	
 	    if (connect_count >= SOCKET_CONNECT_NUMBER) {
 	         //连接数达到上限
+             printf("client connect limit\n");
              close(client_socket);
              continue;
 	    }
+        
+        pthread_mutex_lock(mutex);
         client_socket_array[++connect_count] = client_socket;
+        pthread_mutex_unlock(mutex);
         
-        
-        
+        result =  pthread_create(&thread_id, NULL, &ChatRoom, (void*)&client_socket);
+        if (result != 0) {
+             close(client_socket);
+             continue;
+        }
+        pthread_detach(thread_id);        
+   }
 
-        char message[] = "Hello client how are you nice to meet you";
-        write(client_socket,message,sizeof(message));
-        
-   }    
+   pthread_mutex_destroy(mutex);
 
    close(server_socket);
    exit(0);
+}
+
+static void *ChatRoom(void *arg) {
+   int user_socket = (int)*argv;
+   char msg[BUFFER_SIZE];
+   ssize_t read_byte;
+
+   while (1) {
+       read_byte = read(user_socket, msg, sizeof(msg));
+       if (read_byte < 0) {
+            break;
+       }
+       msg[read_byte] = '\0';
+       if (strcmp(msg, "q") == 0) {
+            break;
+       }
+       
+       pthread_mutex_lock(mutex);
+       //广播
+       for (int i = 0; i < connect_count; ++i) {
+            if (user_socket == client_socket_array[i]) {
+                continue;
+            }
+            write(client_socket_array[i], msg, read_byte);
+       }
+       pthread_mutex_unlock(mutex);
+       
+   }
+
+   printf("%d client socket close\n", user_socket);
+   close(user_socket);
+   //移除socket
+   pthread_mutex_lock(mutex);
+   for (int i = 0; i < connect_count; ++i) {
+        if (user_socket == client_socket_array[i]) {
+            for (int j = i; j < connect_count; j++) {
+                client_socket_array[j] = client_socket_array[j+1];
+            }
+            connect_count--;
+            break;
+        }
+   }
+   pthread_mutex_unlock(mutex);
+
 }

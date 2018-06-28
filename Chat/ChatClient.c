@@ -8,23 +8,30 @@
 #include <sys/uio.h>
 #include <unistd.h>
 #include <errno.h>
+#include <pthread.h>
+
 
 #define BUF_SIZE 4
+int result;
 
+static void *ChatSend(void *arg);
+static void *ChatRecv(void *arg);
 
 int main(int argc, char *argv[]) {
-    if (argc != 3) {
+    if (argc != 4) {
         printf("usage %s <ip> <port>/n", argv[0]);
         exit(1);
     }
     
     printf("ip: %s\n", argv[1]);
     printf("port: %s\n", argv[2]);
+    printf("name: %s\n", argv[3]);
 
     char msg[BUF_SIZE];
     char out[BUF_SIZE];
     int read_cnt;
     struct sockaddr_in serv_addr;
+    pthread_t thread_id;
    
     int client_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (client_socket == -1 ) {
@@ -41,6 +48,19 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
+    result =  pthread_create(&thread_id, NULL, &ChatSend, (void*)&client_socket);
+    if (result != 0) {
+        exit(1);
+    }
+    pthread_detach(thread_id);
+
+    result =  pthread_create(&thread_id, NULL, &ChatRecv, (void*)&client_socket);
+    if (result != 0) {
+        exit(1);
+    }
+    pthread_detach(thread_id);
+    
+
     while((read_cnt = read(client_socket, msg, BUF_SIZE)) != 0) {
        memcpy(out, msg, read_cnt);
        out[read_cnt] = '\0';
@@ -50,4 +70,12 @@ int main(int argc, char *argv[]) {
     close(client_socket);
 
     exit(0);
+}
+
+static void *ChatSend(void *arg) {
+
+}
+
+static void *ChatRecv(void *arg) {
+
 }
