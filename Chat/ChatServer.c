@@ -5,13 +5,15 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <arpa/inet.h>
 
-#define MAX_LISTEN_NUMBER  5 //监听数
-#define SOCKET_CONNECT_NUMBER 256 //socket 连接数
+#define MAX_LISTEN_NUMBER  2 //监听数
+#define SOCKET_CONNECT_NUMBER 5 //socket 连接数
 #define BUFFER_SIZE 256
 
 pthread_mutex_t mutex;
-int connect_count; //连接数
+int connect_count; //连接数达到上限
+int client_socket_array[SOCKET_CONNECT_NUMBER];
 
 static void *ChatRoom(void *arg);
 
@@ -24,7 +26,6 @@ int main(int argc, char *argv[]) {
 
     struct sockaddr_in client_addr;
     int client_address_len;
-    int client_socket_array[SOCKET_CONNECT_NUMBER];
     pthread_t thread_id;
     int result;
 	
@@ -49,6 +50,8 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
+    printf("服务已经启动\n");
+
     connect_count = 0;
     pthread_mutex_init(&mutex, NULL);
     
@@ -67,9 +70,9 @@ int main(int argc, char *argv[]) {
              continue;
 	    }
         
-        pthread_mutex_lock(mutex);
-        client_socket_array[++connect_count] = client_socket;
-        pthread_mutex_unlock(mutex);
+        pthread_mutex_lock(&mutex);
+        client_socket_array[connect_count++] = client_socket;
+        pthread_mutex_unlock(&mutex);
         
         result =  pthread_create(&thread_id, NULL, &ChatRoom, (void*)&client_socket);
         if (result != 0) {
@@ -77,45 +80,46 @@ int main(int argc, char *argv[]) {
              continue;
         }
         pthread_detach(thread_id);        
+        printf("Connect client IP: %s\n", inet_ntoa(client_addr.sin_addr));
    }
 
-   pthread_mutex_destroy(mutex);
+   pthread_mutex_destroy(&mutex);
 
    close(server_socket);
    exit(0);
 }
 
 static void *ChatRoom(void *arg) {
-   int user_socket = (int)*argv;
+   int user_socket = *((int*)arg);
    char msg[BUFFER_SIZE];
    ssize_t read_byte;
 
    while (1) {
-       read_byte = read(user_socket, msg, sizeof(msg));
-       if (read_byte < 0) {
+       read_byte = read(user_socket, msg, BUFFER_SIZE);
+       if (read_byte <= 0) {
+            printf("%d退出聊天\n",user_socket);
             break;
        }
        msg[read_byte] = '\0';
-       if (strcmp(msg, "q") == 0) {
+       if (strcmp(msg, "q\n") == 0) {
+            printf("%d退出聊天\n",user_socket);
             break;
        }
-       
-       pthread_mutex_lock(mutex);
+
+       pthread_mutex_lock(&mutex);
        //广播
+       printf("目前的聊天人数:%d\n", connect_count);
        for (int i = 0; i < connect_count; ++i) {
-            if (user_socket == client_socket_array[i]) {
-                continue;
-            }
             write(client_socket_array[i], msg, read_byte);
        }
-       pthread_mutex_unlock(mutex);
+       pthread_mutex_unlock(&mutex);
        
    }
 
    printf("%d client socket close\n", user_socket);
    close(user_socket);
    //移除socket
-   pthread_mutex_lock(mutex);
+   pthread_mutex_lock(&mutex);
    for (int i = 0; i < connect_count; ++i) {
         if (user_socket == client_socket_array[i]) {
             for (int j = i; j < connect_count; j++) {
@@ -125,6 +129,6 @@ static void *ChatRoom(void *arg) {
             break;
         }
    }
-   pthread_mutex_unlock(mutex);
+   pthread_mutex_unlock(&mutex);
 
 }

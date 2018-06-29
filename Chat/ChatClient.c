@@ -11,7 +11,8 @@
 #include <pthread.h>
 
 
-#define BUF_SIZE 4
+#define BUF_SIZE 200 
+char nickname[30]; //昵称
 int result;
 
 static void *ChatSend(void *arg);
@@ -27,11 +28,14 @@ int main(int argc, char *argv[]) {
     printf("port: %s\n", argv[2]);
     printf("name: %s\n", argv[3]);
 
+    strncpy(nickname, argv[3], 30);
+
     char msg[BUF_SIZE];
     char out[BUF_SIZE];
     int read_cnt;
     struct sockaddr_in serv_addr;
-    pthread_t thread_id;
+    pthread_t send_id;
+    pthread_t recv_id;
    
     int client_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (client_socket == -1 ) {
@@ -48,34 +52,50 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    result =  pthread_create(&thread_id, NULL, &ChatSend, (void*)&client_socket);
+    result =  pthread_create(&send_id, NULL, &ChatSend, (void*)&client_socket);
     if (result != 0) {
         exit(1);
     }
-    pthread_detach(thread_id);
 
-    result =  pthread_create(&thread_id, NULL, &ChatRecv, (void*)&client_socket);
+    result =  pthread_create(&send_id, NULL, &ChatRecv, (void*)&client_socket);
     if (result != 0) {
         exit(1);
     }
-    pthread_detach(thread_id);
-    
+    pthread_join(send_id, NULL);
+    pthread_join(recv_id, NULL);
 
-    while((read_cnt = read(client_socket, msg, BUF_SIZE)) != 0) {
-       memcpy(out, msg, read_cnt);
-       out[read_cnt] = '\0';
-       printf("%s", out);
-    }
-    printf("\n");
+    printf("程序退出\n");
     close(client_socket);
-
     exit(0);
 }
 
 static void *ChatSend(void *arg) {
-
+    int client_socket = *((int*)(arg));
+    char buffer[BUF_SIZE];
+    char msg[256];
+    while(1) {
+        fgets(buffer, BUF_SIZE, stdin);
+        if (strcmp(buffer, "q\n") == 0) {
+            write(client_socket, buffer, strlen(buffer));
+            close(client_socket);
+            break;
+        } else {
+            sprintf(msg, "%s: %s", nickname, buffer);
+            write(client_socket, msg, strlen(msg));
+        }
+    }
 }
 
 static void *ChatRecv(void *arg) {
-
+    int client_socket = *((int*)(arg));
+    char msg[256];
+    int read_byte;
+    while(1) {
+        read_byte = read(client_socket, msg, 256);
+        if (read_byte < 0) {
+            break;
+        }
+        msg[read_byte] = '\0';
+        printf("%s\n", msg);
+    }
 }
