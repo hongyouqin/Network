@@ -3,7 +3,7 @@
 
 ## Hello文件夹
     是一个简单的tcp客户端／服务端socket程序.
-    用法::
+    用法:
     gcc SimpleClient.c -o client
     gcc SimpleServer.c -o server
     ./server 9999
