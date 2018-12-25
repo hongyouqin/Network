@@ -8,7 +8,7 @@
 #include <sys/epoll.h>
 #include <unistd.h>
 
- #define EPOLL_SIZE 50
+ #define EPOLL_SIZE 4
 
 
 
@@ -16,7 +16,7 @@ void addfd(int event_fp, int fd) {
     struct epoll_event event;
     event.events = EPOLLIN;
     event.data.fd = fd;
-    epoll_ctl(epoll_fp, EPOLL_CTL_ADD, listen_socket, &event);
+    epoll_ctl(event_fp, EPOLL_CTL_ADD, fd, &event);
 }
 
 int main(int argc, char* argv[]) {
@@ -32,7 +32,7 @@ int main(int argc, char* argv[]) {
     int epoll_fp;
     int event_cnt;
     int client_sock;
-    int sockaddr_in client_address;
+    struct sockaddr_in clr_addr;
     char buf[1024];
 
     struct sockaddr_in address;
@@ -51,7 +51,7 @@ int main(int argc, char* argv[]) {
     assert(ret != -1);
 
     epoll_fp = epoll_create(EPOLL_SIZE);
-    ep_events = malloc(sizeof(struct epoll_event)* EPOLL_SIZE);
+    ep_events = (struct epoll_event*) malloc(sizeof(struct epoll_event) * EPOLL_SIZE);
     
     addfd(epoll_fp, listen_socket);
 
@@ -65,7 +65,8 @@ int main(int argc, char* argv[]) {
         for(int i = 0; i < event_cnt; i++) {
             if (ep_events[i].data.fd == listen_socket) {
                 //建立连接
-                client_sock = accept(listen_socket, (struct sockaddr*)&client_address, sizeof(client_address));
+                int adr_sz = sizeof(clr_addr);
+                client_sock = accept(listen_socket, (struct sockaddr*)&clr_addr, (socklen_t*)&adr_sz);
                 addfd(epoll_fp, client_sock);
                 printf("connected client: %d \n", client_sock);
             } else {
@@ -74,16 +75,18 @@ int main(int argc, char* argv[]) {
                int len = read(ep_events[i].data.fd, buf, 100);
                if (len == 0) {
                    //关闭 request
-                   epoll_ctrl(epoll_fp, EPOLL_CTL_DEL, ep_events[i].data.fd, NULL);
+                   epoll_ctl(epoll_fp, EPOLL_CTL_DEL, ep_events[i].data.fd, NULL);
                    close(ep_events[i].data.fd);
-                   printf("closed client: %d\n"， ep_events[i].data.fd);
+                   printf("closed client: %d\n", ep_events[i].data.fd);
                } else {
                    write(ep_events[i].data.fd, buf, len); //echo
+                   printf("write data: %s\n", buf);
                }
             }
         }
     }
-    close(listen_sock);
+    close(listen_socket);
     close(epoll_fp);
 
+    return 0;
 }
